@@ -1,3 +1,21 @@
+// Limpieza inicial (opcional)
+MATCH (n) DETACH DELETE n;
+
+// Creación de nodos
+CREATE (cd1:CentroDistribucion:Zona {nombre: 'Centro Principal', tipo_zona: 'logistica', capacidad_vehiculos: 50});
+CREATE (cd2:CentroDistribucion:Zona {nombre: 'Centro Secundario', tipo_zona: 'logistica', capacidad_vehiculos: 30});
+
+CREATE (z1:Zona {nombre: 'AltaVista', tipo_zona: 'comercial'});
+CREATE (z2:Zona {nombre: 'Castillito', tipo_zona: 'residencial'});
+CREATE (z3:Zona {nombre: 'Puerto Ordaz', tipo_zona: 'mixto'});
+CREATE (z4:Zona {nombre: 'Villa Asia', tipo_zona: 'residencial'});
+CREATE (z5:Zona {nombre: 'Los Olivos', tipo_zona: 'residencial'});
+CREATE (z6:Zona {nombre: 'San Félix', tipo_zona: 'mixto'});
+CREATE (z7:Zona {nombre: 'Unare', tipo_zona: 'comercial'});
+CREATE (z8:Zona {nombre: 'Cauca', tipo_zona: 'residencial'});
+CREATE (z9:Zona {nombre: 'Las Palmas', tipo_zona: 'residencial'});
+CREATE (z10:Zona {nombre: 'Paseo Caroni', tipo_zona: 'comercial'});
+
 // Conexión desde Centro Principal
 MATCH (cd1:CentroDistribucion {nombre: 'Centro Principal'})
 MATCH (z3:Zona {nombre: 'Puerto Ordaz'})

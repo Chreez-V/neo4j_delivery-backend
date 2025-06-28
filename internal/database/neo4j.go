@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"strings"
 	"os"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
@@ -29,7 +30,7 @@ func (db *Neo4jDatabase) Close() error {
 	return db.Driver.Close()
 }
 
-// ExecuteCypherFile ejecuta un archivo .cypher completo
+// ExecuteCypherFile mejorado para manejar transacciones y múltiples sentencias
 func (db *Neo4jDatabase) ExecuteCypherFile(filePath string) error {
 	session := db.Driver.NewSession(neo4j.SessionConfig{})
 	defer session.Close()
@@ -40,9 +41,24 @@ func (db *Neo4jDatabase) ExecuteCypherFile(filePath string) error {
 		return fmt.Errorf("error reading cypher file: %w", err)
 	}
 
+	// Dividir en sentencias individuales (separadas por ;)
+	statements := strings.Split(string(cypher), ";")
+
 	_, err = session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
-		_, err := tx.Run(string(cypher), nil)
-		return nil, err
+		for _, stmt := range statements {
+			// Eliminar espacios en blanco y saltos de línea
+			stmt = strings.TrimSpace(stmt)
+			if stmt == "" {
+				continue
+			}
+
+			// Ejecutar cada sentencia
+			_, err := tx.Run(stmt, nil)
+			if err != nil {
+				return nil, fmt.Errorf("error executing statement: %q, error: %w", stmt, err)
+			}
+		}
+		return nil, nil
 	})
 
 	return err

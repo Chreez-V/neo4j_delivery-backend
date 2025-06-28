@@ -27,6 +27,15 @@ func main() {
 	}
 	defer db.Close()
 
+	
+	// Cargar datos iniciales
+	err = db.ExecuteCypherFile("scripts/data.cypher")
+	if err != nil {
+		log.Printf("Warning: could not initialize DB: %v", err)
+	} else {
+		log.Println("Datos iniciales cargados correctamente")
+	}
+
 	// Configurar endpoints
 	router := http.NewServeMux()
 router.HandleFunc("/api/zones", func(w http.ResponseWriter, r *http.Request) {
