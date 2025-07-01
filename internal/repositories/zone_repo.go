@@ -38,7 +38,6 @@ func (r *ZoneRepository) FindAll(ctx context.Context) ([]models.Zone, error) {
 				TipoZona: record.Values[1].(string),
 			})
 		}
-
 		return zones, nil
 	})
 
@@ -93,4 +92,55 @@ func (r *ZoneRepository) FindOptimalRoute(ctx context.Context, from, to string) 
 	}
 
 	return result.([]models.Connection), nil
+}
+
+func (r *ZoneRepository) GetAllAsGraph() (models.Graph, error) {
+
+	query := `MATCH (n) 
+	OPTIONAL MATCH (n)-[z:CONECTA]->(neighbor)
+	RETURN n.nombre AS padre,
+	z.tiempo_minutos AS tiempo, 
+	z.accesible AS accesible,
+	neighbor.nombre AS hijo`
+
+	session := r.Driver.NewSession(neo4j.SessionConfig{})
+	defer session.Close()
+
+	t, err := session.ReadTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+		result, err := tx.Run(query, nil)
+		if err != nil {
+			return nil, err
+		}
+		g := make(models.Graph)
+
+		for result.Next() {
+			var n any
+			record := result.Record()
+			data := record.AsMap()
+			parent := data["padre"].(string)
+			if data["hijo"] == nil {
+				g[parent] = []models.Edge{}
+			} else {
+				parsedTime := float64(data["tiempo"].(int64))
+				accesible := data["accesible"].(bool)
+				n = models.Edge{data["hijo"].(string), accesible, parsedTime}
+				g[parent] = append(g[parent], n.(models.Edge))
+			}
+		}
+		return g, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return t.(models.Graph), nil
+}
+
+func hasNode(m *models.Graph, target string) bool {
+	for key := range *m {
+		if key == target {
+			return true
+		}
+	}
+	return false
 }
