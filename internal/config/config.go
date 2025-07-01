@@ -1,9 +1,10 @@
 package config
 
 import (
-    "os"
-    "strconv" // Este es el paquete necesario para Atoi()
+	"os"
+	"strconv" // Este es el paquete necesario para Atoi()
 )
+
 // getEnv obtiene una variable de entorno o un valor por defecto
 func getEnv(key, defaultValue string) string {
 	if value, exists := os.LookupEnv(key); exists {

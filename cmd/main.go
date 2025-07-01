@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"neo4j_delivery/internal/config"
+	"neo4j_delivery/internal/database"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"neo4j_delivery/internal/config"
-	"neo4j_delivery/internal/database"
 )
 
 func main() {
@@ -27,7 +27,6 @@ func main() {
 	}
 	defer db.Close()
 
-	
 	// Cargar datos iniciales
 	err = db.ExecuteCypherFile("scripts/data.cypher")
 	if err != nil {
@@ -38,15 +37,15 @@ func main() {
 
 	// Configurar endpoints
 	router := http.NewServeMux()
-router.HandleFunc("/api/zones", func(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
-    w.Write([]byte(`{"message": "Zonas endpoint funciona"}`))
-})
+	router.HandleFunc("/api/zones", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message": "Zonas endpoint funciona"}`))
+	})
 
-router.HandleFunc("/api/route", func(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
-    w.Write([]byte(`{"message": "Rutas endpoint funciona"}`))
-})
+	router.HandleFunc("/api/route", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message": "Rutas endpoint funciona"}`))
+	})
 	// Iniciar servidor
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
