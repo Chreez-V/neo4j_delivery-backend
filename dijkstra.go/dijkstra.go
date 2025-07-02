@@ -65,6 +65,20 @@ func GetNodes(graph models.Graph) []string {
 	}
 	return nodes
 }
+// Inicializa el costo de los nodos que aún no han sido visitados
+func InitCosts(graph models.Graph, startingNode string) map[string]models.Edge {
+	table := make(map[string]models.Edge)
+	allNodes := GetNodes(graph)
+
+	for _, node := range allNodes {
+		if node == startingNode {
+			table[node] = models.Edge{"", true, 0}
+		} else {
+			table[node] = models.Edge{"", true, math.Inf(1)}
+		}
+	}
+	return table
+}
 
 // Dijkstra implementa el algoritmo de Dijkstra para encontrar los caminos más cortos desde un nodo inicial.
 // Ahora devuelve tanto las distancias como los predecesores.

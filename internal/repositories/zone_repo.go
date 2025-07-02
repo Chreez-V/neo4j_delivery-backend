@@ -336,3 +336,31 @@ func (r *ZoneRepository) GetConnectionStatus(ctx context.Context, source, target
 	}
 	return result.(bool), nil
 }
+// UpdateConnectionTime actualiza la propiedad 'tiempo_minutos' de una conexión.
+func (r *ZoneRepository) UpdateConnectionTime(ctx context.Context, source, target string, newTime float64) error {
+	session := r.Driver.NewSession(neo4j.SessionConfig{})
+	defer session.Close()
+
+	_, err := session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+		query := `
+		MATCH (s:Zona {nombre: $source})-[r:CONECTA]->(t:Zona {nombre: $target})
+		SET r.tiempo_minutos = $newTime
+		RETURN r
+		`
+		params := map[string]interface{}{
+			"source":  source,
+			"target":  target,
+			"newTime": newTime,
+		}
+		_, err := tx.Run(query, params)
+		if err != nil {
+			return nil, fmt.Errorf("falló la actualización de tiempo para %s -> %s: %w", source, target, err)
+		}
+		return nil, nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("error al actualizar el tiempo de conexión: %w", err)
+	}
+	return nil
+}

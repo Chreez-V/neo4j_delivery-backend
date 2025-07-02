@@ -28,6 +28,11 @@ func (s *DeliveryService) GetAllZones(ctx context.Context) ([]models.Zone, error
 func (s *DeliveryService) CalculateRoute(ctx context.Context, from, to string) ([]models.Connection, error) {
 	return s.ZoneRepo.FindOptimalRoute(ctx, from, to)
 }
+// UpdateStreetTime actualiza el tiempo de tránsito de una calle (conexión).
+func (s *DeliveryService) UpdateStreetTime(ctx context.Context, source, target string, newTime float64) error {
+	return s.ZoneRepo.UpdateConnectionTime(ctx, source, target, newTime)
+}
+
 
 // FindShortestPath ahora usa la versión de Dijkstra que devuelve el mapa de predecesores.
 func (s *DeliveryService) FindShortestPath(start string, end string) ([]string, float64, error) {
