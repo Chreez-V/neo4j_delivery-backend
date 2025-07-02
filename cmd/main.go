@@ -85,12 +85,12 @@ func main() {
 
 		path, cost, err := service.FindShortestPath(start, end)
 		if err != nil {
-			w.Write([]byte(`error bro`))
+			log.Println("Error marshalling graph to JSON: %v", err)
+			w.Write([]byte(`unreachable`))
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{"items": path, "minutes": cost})
 		}
-		if err != nil {
-			log.Fatalf("Error marshalling graph to JSON: %v", err)
-		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"items": path, "minutes": cost})
+
 	})
 
 	router.HandleFunc("/api/zones/accesible", func(w http.ResponseWriter, r *http.Request) {
