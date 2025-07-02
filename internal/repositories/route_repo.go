@@ -1,7 +1,6 @@
 package repositories
 
 import (
-	"fmt"
 	"neo4j_delivery/internal/models"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
