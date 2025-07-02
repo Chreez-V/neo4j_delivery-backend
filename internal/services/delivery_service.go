@@ -12,8 +12,8 @@ type DeliveryService struct {
 }
 
 func (s *DeliveryService) GetGraphData() (models.GraphData, error) {
-    // Implementa la lógica para obtener nodos y relaciones de Neo4j
-    return s.ZoneRepo.GetGraphData()
+	// Implementa la lógica para obtener nodos y relaciones de Neo4j
+	return s.ZoneRepo.GetGraphData()
 }
 
 func NewDeliveryService(ZoneRepo *repositories.ZoneRepository) *DeliveryService {
@@ -48,4 +48,23 @@ func (s *DeliveryService) FindInaccesible(start string) ([]string, []string) {
 	}
 	accesibleNodes, innaccesibleNodes := dijkstra.FindInaccessibleNodes(g, start)
 	return accesibleNodes, innaccesibleNodes
+}
+
+func (s *DeliveryService) FindDirectAccessible(start string, minutes float64) map[string][]models.Route {
+	g, err := s.ZoneRepo.GetAllAsGraph()
+	if err != nil {
+		return nil
+	}
+	accesibleNodes, _ := dijkstra.FindInaccessibleNodes(g, start)
+	table := dijkstra.Dijkstra(g, start)
+	result := make(map[string][]models.Route)
+
+	for i := range accesibleNodes {
+
+		path, travelTime, _ := dijkstra.Travel(table, start, accesibleNodes[i])
+		if travelTime < minutes && accesibleNodes[i] != start {
+			result[start] = append(result[start], models.Route{path, travelTime, accesibleNodes[i]})
+		}
+	}
+	return result
 }

@@ -13,10 +13,16 @@ type DistributionCenter struct {
 }
 
 type Connection struct {
-	Source      string `json:"source"`
-	Target      string `json:"target"`
-	Tiempo      int    `json:"tiempo_minutos"`
-	Trafico     string `json:"trafico_actual"`
-	Capacidad   int    `json:"capacidad"`
-	Direccion   string `json:"direccion"` // 'uni' o 'bi'
+	Source    string `json:"source"`
+	Target    string `json:"target"`
+	Tiempo    int    `json:"tiempo_minutos"`
+	Trafico   string `json:"trafico_actual"`
+	Capacidad int    `json:"capacidad"`
+	Direccion string `json:"direccion"` // 'uni' o 'bi'
+}
+
+type Route struct {
+	Path   []string
+	Time   float64
+	Target string
 }

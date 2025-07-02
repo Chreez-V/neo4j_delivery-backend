@@ -5,15 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/rs/cors"
 	"log"
 	"neo4j_delivery/internal/config"
 	"neo4j_delivery/internal/database"
 	"neo4j_delivery/internal/repositories"
 	"neo4j_delivery/internal/services"
-	"github.com/rs/cors"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -89,20 +90,29 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		queryParams := r.URL.Query()
 		start := queryParams.Get("start")
+		direct := queryParams.Get("direct")
+		minutes, err := strconv.ParseFloat(queryParams.Get("minutes"), 64)
+		if err != nil {
+			log.Fatal(err)
+		}
 		fmt.Println(start)
-		accesible, inaccesible := service.FindInaccesible(start)
-
-		json.NewEncoder(w).Encode(map[string]interface{}{"accesible": accesible, "inaccesible": inaccesible})
+		if direct == "" {
+			accesible, inaccesible := service.FindInaccesible(start)
+			json.NewEncoder(w).Encode(map[string]interface{}{"accesible": accesible, "inaccesible": inaccesible})
+		} else {
+			routes := service.FindDirectAccessible(start, minutes)
+			json.NewEncoder(w).Encode(map[string]interface{}{"from": start, "to": routes})
+		}
 	})
 
 	// Configurar CORS
-c := cors.New(cors.Options{
-    AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
-    AllowedMethods:   []string{"GET", "POST", "OPTIONS", "PUT", "DELETE"},
-    AllowedHeaders:   []string{"Accept", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
-    AllowCredentials: true,
-    Debug:           true, // Solo para desarrollo
-})
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		AllowedMethods:   []string{"GET", "POST", "OPTIONS", "PUT", "DELETE"},
+		AllowedHeaders:   []string{"Accept", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
+		AllowCredentials: true,
+		Debug:            true, // Solo para desarrollo
+	})
 	// Configurar servidor HTTP con CORS
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
