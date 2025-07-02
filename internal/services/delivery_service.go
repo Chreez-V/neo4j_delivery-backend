@@ -35,3 +35,12 @@ func (s *DeliveryService) FindShortestPath(start string, end string) ([]string, 
 
 	return path, cost, nil
 }
+
+func (s *DeliveryService) FindInaccesible(start string) ([]string, []string) {
+	g, err := s.ZoneRepo.GetAllAsGraph()
+	if err != nil {
+		return nil, nil
+	}
+	accesibleNodes, innaccesibleNodes := dijkstra.FindInaccessibleNodes(g, start)
+	return accesibleNodes, innaccesibleNodes
+}

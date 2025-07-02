@@ -73,6 +73,15 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]interface{}{"items": path, "minutes": cost})
 	})
 
+	router.HandleFunc("/api/zones/accesible", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		queryParams := r.URL.Query()
+		start := queryParams.Get("start")
+		fmt.Println(start)
+		accesible, inaccesible := service.FindInaccesible(start)
+
+		json.NewEncoder(w).Encode(map[string]interface{}{"accesible": accesible, "inaccesible": inaccesible})
+	})
 	// Iniciar servidor
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),

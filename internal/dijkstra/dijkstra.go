@@ -139,10 +139,13 @@ func RemoveElementByIndex[T any](slice []T, index int) ([]T, bool) {
 	return append(slice[:index], slice[index+1:]...), true
 }
 
-func FindInaccessibleNodes(graph models.Graph, startNode string) []string {
+func FindInaccessibleNodes(graph models.Graph, startNode string) ([]string, []string) {
 	if len(graph) == 0 {
-		return []string{}
+		return []string{}, []string{}
 	}
+
+	visited := make(map[string]bool)
+	queue := []string{}
 
 	_, startNodeExists := graph[startNode]
 	if !startNodeExists {
@@ -150,11 +153,10 @@ func FindInaccessibleNodes(graph models.Graph, startNode string) []string {
 		for node := range graph {
 			inaccessible = append(inaccessible, node)
 		}
-		return inaccessible
+		return []string{}, inaccessible
 	}
 
-	visited := make(map[string]bool)
-	queue := []string{startNode}
+	queue = append(queue, startNode)
 	visited[startNode] = true
 
 	for len(queue) > 0 {
@@ -169,12 +171,16 @@ func FindInaccessibleNodes(graph models.Graph, startNode string) []string {
 		}
 	}
 
-	inaccessibleNodes := []string{}
+	var accessibleNodes []string
+	var inaccessibleNodes []string
+
 	for node := range graph {
-		if !visited[node] {
+		if visited[node] {
+			accessibleNodes = append(accessibleNodes, node)
+		} else {
 			inaccessibleNodes = append(inaccessibleNodes, node)
 		}
 	}
 
-	return inaccessibleNodes
+	return accessibleNodes, inaccessibleNodes
 }
