@@ -1,22 +1,23 @@
-// main.go
 package main
 
 import (
+	_ "bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"neo4j_delivery/internal/config"
+	"neo4j_delivery/internal/database"
+	"neo4j_delivery/internal/repositories"
+	"neo4j_delivery/internal/services"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
-	"neo4j_delivery/internal/config"
-	"neo4j_delivery/internal/database"
-	"neo4j_delivery/internal/models"
-	"neo4j_delivery/internal/repositories"
-	"neo4j_delivery/internal/services"
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -29,228 +30,209 @@ func main() {
 		cfg.Neo4jPassword,
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error al conectar con Neo4j: %v", err)
 	}
+
+	service := services.DeliveryService{
+		ZoneRepo:  repositories.NewZoneRepository(db.Driver),
+		RouteRepo: repositories.NewRouteRepository(db.Driver), // Asegúrate de que RouteRepo esté inicializado si se usa
+	}
+
 	defer db.Close()
 
 	// Cargar datos iniciales
 	err = db.ExecuteCypherFile("scripts/data.cypher")
 	if err != nil {
-		log.Printf("Warning: could not initialize DB: %v", err)
+		log.Printf("Advertencia: No se pudieron cargar los datos iniciales: %v", err)
 	} else {
 		log.Println("Datos iniciales cargados correctamente")
 	}
 
-	// Inicializar repositorios y servicios
-	zoneRepo := repositories.NewZoneRepository(db.Driver)
-	deliveryService := services.NewDeliveryService(zoneRepo)
-
 	// Configurar endpoints
 	router := http.NewServeMux()
 
-	router.HandleFunc("/api/zones", func(w http.ResponseWriter, r *http.Request) {
-		zones, err := deliveryService.GetAllZones(r.Context())
+	router.HandleFunc("/api/graph", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		graphData, err := service.GetGraphData()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		json.NewEncoder(w).Encode(graphData)
+	})
+
+	router.HandleFunc("/api/zones", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Solicitud a /api/zones")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(zones)
+		w.Write([]byte(`{"message": "Zonas endpoint funciona"}`))
 	})
 
 	router.HandleFunc("/api/route", func(w http.ResponseWriter, r *http.Request) {
-		from := r.URL.Query().Get("from")
-		to := r.URL.Query().Get("to")
-		if from == "" || to == "" {
-			http.Error(w, "Los parámetros 'from' y 'to' son requeridos.", http.StatusBadRequest)
-			return
-		}
-
-		route, err := deliveryService.CalculateRoute(r.Context(), from, to)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(route)
+		log.Println("Solicitud a /api/route")
+		w.Write([]byte(`{"message": "Rutas endpoint funciona"}`))
 	})
 
-	// Nuevo endpoint para cerrar una conexión
-	router.HandleFunc("/api/connection/close", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
-			return
-		}
-
-		var req struct {
-			From string `json:"from"`
-			To   string `json:"to"`
-		}
-
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Solicitud inválida", http.StatusBadRequest)
-			return
-		}
-
-		if req.From == "" || req.To == "" {
-			http.Error(w, "Los parámetros 'from' y 'to' son requeridos.", http.StatusBadRequest)
-			return
-		}
-
-		err := deliveryService.CloseConnection(r.Context(), req.From, req.To)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Error al cerrar conexión: %v", err), http.StatusInternalServerError)
-			return
-		}
-
+	router.HandleFunc("/api/route/hightraffic", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(fmt.Sprintf(`{"message": "Conexión entre %s y %s cerrada exitosamente."}`, req.From, req.To)))
+		route := service.RouteRepo.GetHighTrafficEdges()
+		json.NewEncoder(w).Encode(map[string]interface{}{"items": route})
 	})
 
-	// Nuevo endpoint para abrir una conexión
-	router.HandleFunc("/api/connection/open", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
-			return
-		}
-
-		var req struct {
-			From string `json:"from"`
-			To   string `json:"to"`
-		}
-
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Solicitud inválida", http.StatusBadRequest)
-			return
-		}
-
-		if req.From == "" || req.To == "" {
-			http.Error(w, "Los parámetros 'from' y 'to' son requeridos.", http.StatusBadRequest)
-			return
-		}
-
-		err := deliveryService.OpenConnection(r.Context(), req.From, req.To)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Error al abrir conexión: %v", err), http.StatusInternalServerError)
-			return
-		}
-
+	router.HandleFunc("/api/zones/dijkstra", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(fmt.Sprintf(`{"message": "Conexión entre %s y %s abierta exitosamente."}`, req.From, req.To)))
+		queryParams := r.URL.Query()
+
+		start := queryParams.Get("start")
+		end := queryParams.Get("end")
+
+		if start == "" || end == "" {
+			http.Error(w, "Parámetros 'start' y 'end' son requeridos.", http.StatusBadRequest)
+			return
+		}
+
+		path, cost, err := service.FindShortestPath(start, end)
+		if err != nil {
+			log.Printf("Error al encontrar la ruta más corta de %s a %s: %v", start, end, err)
+			http.Error(w, fmt.Sprintf("No se pudo encontrar una ruta: %v", err), http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"items": path, "minutes": cost})
 	})
 
-	// Nuevo endpoint para añadir una nueva zona o centro de distribución
-	router.HandleFunc("/api/zone", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/api/zones/accesible", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		queryParams := r.URL.Query()
+		start := queryParams.Get("start")
+		direct := queryParams.Get("direct")
+		minutesStr := queryParams.Get("minutes")
+
+		if start == "" {
+			http.Error(w, "Parámetro 'start' es requerido.", http.StatusBadRequest)
+			return
+		}
+
+		if direct == "" {
+			accesible, inaccesible := service.FindInaccesible(start)
+			json.NewEncoder(w).Encode(map[string]interface{}{"accesible": accesible, "inaccesible": inaccesible})
+		} else {
+			minutes, err := strconv.ParseFloat(minutesStr, 64)
+			if err != nil {
+				http.Error(w, "Parámetro 'minutes' debe ser un número válido.", http.StatusBadRequest)
+				return
+			}
+			routes := service.FindDirectAccessible(start, minutes)
+			json.NewEncoder(w).Encode(map[string]interface{}{"from": start, "to": routes})
+		}
+	})
+
+	// --- Nuevos Endpoints para Cierre/Reapertura de Calles ---
+	router.HandleFunc("/api/street/close", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		if r.Method != http.MethodPost {
 			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 			return
 		}
 
 		var requestBody struct {
-			Zone struct {
-				Nombre             string `json:"nombre"`
-				TipoZona           string `json:"tipo_zona"`
-				Poblacion          *int   `json:"poblacion,omitempty"`
-				CapacidadVehiculos *int   `json:"capacidad_vehiculos,omitempty"` // Para centros de distribución
-			} `json:"zone"`
-			Connections []models.Connection `json:"connections"`
+			Source string `json:"source"`
+			Target string `json:"target"`
 		}
 
-		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-			http.Error(w, fmt.Sprintf("Solicitud JSON inválida: %v", err), http.StatusBadRequest)
-			return
-		}
-
-		if requestBody.Zone.Nombre == "" || requestBody.Zone.TipoZona == "" {
-			http.Error(w, "Los campos 'nombre' y 'tipo_zona' de la zona son requeridos.", http.StatusBadRequest)
-			return
-		}
-
-		var newZone interface{}
-		if requestBody.Zone.TipoZona == "logistica" {
-			if requestBody.Zone.CapacidadVehiculos == nil {
-				http.Error(w, "La 'capacidad_vehiculos' es requerida para centros de distribución.", http.StatusBadRequest)
-				return
-			}
-			newZone = models.DistributionCenter{
-				Zone: models.Zone{
-					Nombre:   requestBody.Zone.Nombre,
-					TipoZona: requestBody.Zone.TipoZona,
-				},
-				CapacidadVehiculos: *requestBody.Zone.CapacidadVehiculos,
-			}
-		} else {
-			newZone = models.Zone{
-				Nombre:    requestBody.Zone.Nombre,
-				TipoZona:  requestBody.Zone.TipoZona,
-				Poblacion: requestBody.Zone.Poblacion,
-			}
-		}
-
-		// Validar conexiones (opcional, pero recomendado)
-		for i := range requestBody.Connections { // Usar range con índice para modificar
-			conn := &requestBody.Connections[i] // Obtener un puntero para modificar el elemento
-			if conn.Source == "" || conn.Target == "" {
-				http.Error(w, "Las conexiones deben especificar 'source' y 'target'.", http.StatusBadRequest)
-				return
-			}
-
-		}
-
-		err = deliveryService.CreateZoneWithConnections(r.Context(), newZone, requestBody.Connections)
+		err := json.NewDecoder(r.Body).Decode(&requestBody)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Error al crear zona y conexiones: %v", err), http.StatusInternalServerError)
+			http.Error(w, "Cuerpo de solicitud inválido", http.StatusBadRequest)
+			return
+		}
+		if requestBody.Source == "" || requestBody.Target == "" {
+			http.Error(w, "Los parámetros 'source' y 'target' son requeridos en el cuerpo.", http.StatusBadRequest)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(fmt.Sprintf(`{"message": "Zona '%s' y sus conexiones creadas exitosamente."}`, requestBody.Zone.Nombre)))
+		err = service.CloseStreet(r.Context(), requestBody.Source, requestBody.Target)
+		if err != nil {
+			log.Printf("Error al cerrar calle de %s a %s: %v", requestBody.Source, requestBody.Target, err)
+			http.Error(w, fmt.Sprintf("Error al cerrar calle: %v", err), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"message": fmt.Sprintf("Calle de '%s' a '%s' cerrada exitosamente.", requestBody.Source, requestBody.Target)})
 	})
 
-	// Nuevo endpoint para actualizar el tiempo de una conexión
-	router.HandleFunc("/api/connection/time", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut { // Usar PUT para actualizaciones
+	router.HandleFunc("/api/street/open", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
 			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 			return
 		}
 
-		var req struct {
-			From    string `json:"from"`
-			To      string `json:"to"`
-			NewTime int    `json:"new_time"`
+		var requestBody struct {
+			Source string `json:"source"`
+			Target string `json:"target"`
 		}
 
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Solicitud JSON inválida", http.StatusBadRequest)
-			return
-		}
-
-		if req.From == "" || req.To == "" || req.NewTime <= 0 {
-			http.Error(w, "Los parámetros 'from', 'to' y 'new_time' (mayor que 0) son requeridos.", http.StatusBadRequest)
-			return
-		}
-
-		err := deliveryService.UpdateConnectionTime(r.Context(), req.From, req.To, req.NewTime)
+		err := json.NewDecoder(r.Body).Decode(&requestBody)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Error al actualizar tiempo de conexión: %v", err), http.StatusInternalServerError)
+			http.Error(w, "Cuerpo de solicitud inválido", http.StatusBadRequest)
+			return
+		}
+		if requestBody.Source == "" || requestBody.Target == "" {
+			http.Error(w, "Los parámetros 'source' y 'target' son requeridos en el cuerpo.", http.StatusBadRequest)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(fmt.Sprintf(`{"message": "Tiempo de conexión entre %s y %s actualizado a %d minutos."}`, req.From, req.To, req.NewTime)))
+		err = service.OpenStreet(r.Context(), requestBody.Source, requestBody.Target)
+		if err != nil {
+			log.Printf("Error al reabrir calle de %s a %s: %v", requestBody.Source, requestBody.Target, err)
+			http.Error(w, fmt.Sprintf("Error al reabrir calle: %v", err), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"message": fmt.Sprintf("Calle de '%s' a '%s' reabierta exitosamente.", requestBody.Source, requestBody.Target)})
 	})
 
-	// Iniciar servidor
+	router.HandleFunc("/api/street/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		queryParams := r.URL.Query()
+		source := queryParams.Get("source")
+		target := queryParams.Get("target")
+
+		if source == "" || target == "" {
+			http.Error(w, "Los parámetros de consulta 'source' y 'target' son requeridos", http.StatusBadRequest)
+			return
+		}
+
+		status, err := service.GetStreetStatus(r.Context(), source, target)
+		if err != nil {
+			log.Printf("Error al obtener estado de calle de %s a %s: %v", source, target, err)
+			http.Error(w, fmt.Sprintf("Error al obtener estado de calle: %v", err), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"source":     source,
+			"target":     target,
+			"accessible": status,
+		})
+	})
+	// --- Fin de Nuevos Endpoints ---
+
+	// Configurar CORS
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		AllowedMethods:   []string{"GET", "POST", "OPTIONS", "PUT", "DELETE"},
+		AllowedHeaders:   []string{"Accept", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
+		AllowCredentials: true,
+		Debug:            true, // Solo para desarrollo
+	})
+	// Configurar servidor HTTP con CORS
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: router,
+		Handler: c.Handler(router),
 	}
 
+	// Iniciar servidor
 	go func() {
-		log.Printf("Server starting on port %d", cfg.Port)
+		log.Printf("Servidor iniciando en el puerto %d", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Could not start server: %v", err)
+			log.Fatalf("No se pudo iniciar el servidor: %v", err)
 		}
 	}()
 
@@ -263,8 +245,8 @@ func main() {
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Fatalf("Servidor forzado a apagarse: %v", err)
 	}
 
-	log.Println("Server exiting")
+	log.Println("Servidor saliendo")
 }
