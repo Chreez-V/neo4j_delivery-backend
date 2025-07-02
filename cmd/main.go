@@ -32,7 +32,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	service := services.DeliveryService{repositories.NewZoneRepository(db.Driver)}
+	service := services.DeliveryService{repositories.NewZoneRepository(db.Driver),
+		repositories.NewRouteRepository(db.Driver)}
 
 	defer db.Close()
 
@@ -67,6 +68,12 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		log.Println("route request")
 		w.Write([]byte(`{"message": "Rutas endpoint funciona"}`))
+	})
+
+	router.HandleFunc("/api/route/hightraffic", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		route := service.RouteRepo.GetHighTrafficEdges()
+		json.NewEncoder(w).Encode(map[string]interface{}{"items": route})
 	})
 
 	router.HandleFunc("/api/zones/dijkstra", func(w http.ResponseWriter, r *http.Request) {

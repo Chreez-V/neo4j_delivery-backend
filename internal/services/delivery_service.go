@@ -2,13 +2,15 @@ package services
 
 import (
 	"context"
+	"log"
 	"neo4j_delivery/internal/dijkstra"
 	"neo4j_delivery/internal/models"
 	"neo4j_delivery/internal/repositories"
 )
 
 type DeliveryService struct {
-	ZoneRepo *repositories.ZoneRepository
+	ZoneRepo  *repositories.ZoneRepository
+	RouteRepo *repositories.RouteRepository
 }
 
 func (s *DeliveryService) GetGraphData() (models.GraphData, error) {
@@ -67,4 +69,10 @@ func (s *DeliveryService) FindDirectAccessible(start string, minutes float64) ma
 		}
 	}
 	return result
+}
+
+func (s *DeliveryService) GetHighTrafficRoutes() []models.Connection {
+	routes := s.RouteRepo.GetHighTrafficEdges()
+	log.Println(routes)
+	return routes
 }

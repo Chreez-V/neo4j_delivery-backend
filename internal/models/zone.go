@@ -20,9 +20,3 @@ type Connection struct {
 	Capacidad int    `json:"capacidad"`
 	Direccion string `json:"direccion"` // 'uni' o 'bi'
 }
-
-type Route struct {
-	Path   []string
-	Time   float64
-	Target string
-}
