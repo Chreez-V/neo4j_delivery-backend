@@ -11,6 +11,11 @@ type DeliveryService struct {
 	ZoneRepo *repositories.ZoneRepository
 }
 
+func (s *DeliveryService) GetGraphData() (models.GraphData, error) {
+    // Implementa la lógica para obtener nodos y relaciones de Neo4j
+    return s.ZoneRepo.GetGraphData()
+}
+
 func NewDeliveryService(ZoneRepo *repositories.ZoneRepository) *DeliveryService {
 	return &DeliveryService{ZoneRepo: ZoneRepo}
 }

@@ -10,6 +10,7 @@ import (
 	"neo4j_delivery/internal/database"
 	"neo4j_delivery/internal/repositories"
 	"neo4j_delivery/internal/services"
+	"github.com/rs/cors"
 	"net/http"
 	"os"
 	"os/signal"
@@ -44,6 +45,17 @@ func main() {
 
 	// Configurar endpoints
 	router := http.NewServeMux()
+
+	router.HandleFunc("/api/graph", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		graphData, err := service.GetGraphData()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(graphData)
+	})
+
 	router.HandleFunc("/api/zones", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("zones request")
 		w.Header().Set("Content-Type", "application/json")
@@ -82,12 +94,22 @@ func main() {
 
 		json.NewEncoder(w).Encode(map[string]interface{}{"accesible": accesible, "inaccesible": inaccesible})
 	})
-	// Iniciar servidor
+
+	// Configurar CORS
+c := cors.New(cors.Options{
+    AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+    AllowedMethods:   []string{"GET", "POST", "OPTIONS", "PUT", "DELETE"},
+    AllowedHeaders:   []string{"Accept", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization"},
+    AllowCredentials: true,
+    Debug:           true, // Solo para desarrollo
+})
+	// Configurar servidor HTTP con CORS
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: router,
+		Handler: c.Handler(router),
 	}
 
+	// Iniciar servidor
 	go func() {
 		log.Printf("Server starting on port %d", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

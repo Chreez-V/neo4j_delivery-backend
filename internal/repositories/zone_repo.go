@@ -3,8 +3,9 @@ package repositories
 import (
 	"context"
 	"fmt"
-	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"strconv"
 	"neo4j_delivery/internal/models"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 type ZoneRepository struct {
@@ -13,6 +14,129 @@ type ZoneRepository struct {
 
 func NewZoneRepository(driver neo4j.Driver) *ZoneRepository {
 	return &ZoneRepository{Driver: driver}
+}
+
+func (r *ZoneRepository) GetGraphData() (models.GraphData, error) {
+	session := r.Driver.NewSession(neo4j.SessionConfig{})
+	defer session.Close()
+
+	result, err := session.ReadTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+		query := `
+		MATCH (n)
+		OPTIONAL MATCH (n)-[r:CONECTA]->(m)
+		RETURN n, r, m
+		`
+		result, err := tx.Run(query, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		nodes := make(map[string]models.Node)
+		links := []models.Link{}
+
+		for result.Next() {
+			record := result.Record()
+			
+			// Procesar nodo origen
+			if nodeVal, ok := record.Get("n"); ok && nodeVal != nil {
+				if node, ok := nodeVal.(neo4j.Node); ok {
+					nodeId := strconv.FormatInt(node.Id, 10)
+					
+					// Obtener propiedades con comprobación de nil
+					nombre := ""
+					if val, ok := node.Props["nombre"].(string); ok {
+						nombre = val
+					}
+					
+					tipoZona := ""
+					if val, ok := node.Props["tipo_zona"].(string); ok {
+						tipoZona = val
+					}
+
+					// Determinar si es centro de distribución
+					isCentro := false
+					for _, label := range node.Labels {
+						if label == "CentroDistribucion" {
+							isCentro = true
+							break
+						}
+					}
+
+					label := "Zona"
+					if isCentro {
+						label = "CentroDistribucion"
+					}
+
+					nodes[nodeId] = models.Node{
+						ID:    nodeId,
+						Name:  nombre,
+						Label: label,
+						Tipo:  tipoZona,
+					}
+				}
+			}
+			
+			// Procesar relación si existe
+			if relVal, ok := record.Get("r"); ok && relVal != nil {
+				if rel, ok := relVal.(neo4j.Relationship); ok {
+					if targetVal, ok := record.Get("m"); ok && targetVal != nil {
+						if targetNode, ok := targetVal.(neo4j.Node); ok {
+							targetId := strconv.FormatInt(targetNode.Id, 10)
+							
+							// Obtener propiedades con valores por defecto
+                tiempo := 0.0
+                if val, ok := rel.Props["tiempo_minutos"].(int64); ok {
+                    tiempo = float64(val)
+                } else if val, ok := rel.Props["tiempo_minutos"].(float64); ok {
+                    tiempo = val
+                }
+
+							trafico := ""
+							if val, ok := rel.Props["trafico_actual"].(string); ok {
+								trafico = val
+							}
+
+							capacidad := 0
+							if val, ok := rel.Props["capacidad"].(int64); ok {
+								capacidad = int(val)
+							}
+
+							accesible := true
+							if val, ok := rel.Props["accesible"].(bool); ok {
+								accesible = val
+							}
+
+							links = append(links, models.Link{
+								Source:         strconv.FormatInt(rel.StartId, 10),
+								Target:         targetId,
+								Tiempo_minutos: tiempo,
+								Trafico_actual: trafico,
+								Capacidad:      capacidad,
+								Accesible:      accesible,
+							})
+						}
+					}
+				}
+			}
+		}
+
+		// Convertir el mapa de nodos a slice
+		nodeSlice := make([]models.Node, 0, len(nodes))
+		for _, node := range nodes {
+			nodeSlice = append(nodeSlice, node)
+		}
+
+		return models.GraphData{
+			Nodes: nodeSlice,
+			Links: links,
+		}, nil
+	})
+
+	if err != nil {
+		return models.GraphData{}, err
+	}
+
+	return result.(models.GraphData), nil
 }
 
 func (r *ZoneRepository) FindAll(ctx context.Context) ([]models.Zone, error) {
@@ -93,6 +217,17 @@ func (r *ZoneRepository) FindOptimalRoute(ctx context.Context, from, to string) 
 
 	return result.([]models.Connection), nil
 }
+
+func getNodeLabel(node neo4j.Node) string {
+    labels := node.Labels
+    for _, label := range labels {
+        if label == "CentroDistribucion" {
+            return "CentroDistribucion"
+        }
+    }
+    return "Zona"
+}
+
 
 func (r *ZoneRepository) GetAllAsGraph() (models.Graph, error) {
 
