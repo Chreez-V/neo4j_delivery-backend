@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/rs/cors"
 	"log"
 	"neo4j_delivery/internal/config"
 	"neo4j_delivery/internal/database"
@@ -17,6 +16,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -32,8 +33,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	service := services.DeliveryService{repositories.NewZoneRepository(db.Driver),
-		repositories.NewRouteRepository(db.Driver)}
+	service := services.DeliveryService{
+		ZoneRepo:  repositories.NewZoneRepository(db.Driver),
+		RouteRepo: repositories.NewRouteRepository(db.Driver),
+	}
 
 	defer db.Close()
 
@@ -112,6 +115,123 @@ func main() {
 		}
 	})
 
+	// ---  Endpoint para Actualizar Tiempos de Tránsito ---
+	router.HandleFunc("/api/street/update-time", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var requestBody struct {
+			Source  string  `json:"source"`
+			Target  string  `json:"target"`
+			NewTime float64 `json:"new_time"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&requestBody)
+		if err != nil {
+			http.Error(w, "Cuerpo de solicitud inválido", http.StatusBadRequest)
+			return
+		}
+		if requestBody.Source == "" || requestBody.Target == "" || requestBody.NewTime <= 0 {
+			http.Error(w, "Los parámetros 'source', 'target' y 'new_time' (mayor que 0) son requeridos en el cuerpo.", http.StatusBadRequest)
+			return
+		}
+
+		err = service.UpdateStreetTime(r.Context(), requestBody.Source, requestBody.Target, requestBody.NewTime)
+		if err != nil {
+			log.Printf("Error al actualizar tiempo de calle de %s a %s a %f minutos: %v", requestBody.Source, requestBody.Target, requestBody.NewTime, err)
+			http.Error(w, fmt.Sprintf("Error al actualizar tiempo de calle: %v", err), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"message": fmt.Sprintf("Tiempo de tránsito de '%s' a '%s' actualizado a %.2f minutos.", requestBody.Source, requestBody.Target, requestBody.NewTime)})
+	})
+	// --- Nuevos Endpoints para Cierre/Reapertura de Calles ---
+	router.HandleFunc("/api/street/close", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var requestBody struct {
+			Source string `json:"source"`
+			Target string `json:"target"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&requestBody)
+		if err != nil {
+			http.Error(w, "Cuerpo de solicitud inválido", http.StatusBadRequest)
+			return
+		}
+		if requestBody.Source == "" || requestBody.Target == "" {
+			http.Error(w, "Los parámetros 'source' y 'target' son requeridos en el cuerpo.", http.StatusBadRequest)
+			return
+		}
+
+		err = service.CloseStreet(r.Context(), requestBody.Source, requestBody.Target)
+		if err != nil {
+			log.Printf("Error al cerrar calle de %s a %s: %v", requestBody.Source, requestBody.Target, err)
+			http.Error(w, fmt.Sprintf("Error al cerrar calle: %v", err), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"message": fmt.Sprintf("Calle de '%s' a '%s' cerrada exitosamente.", requestBody.Source, requestBody.Target)})
+	})
+
+	router.HandleFunc("/api/street/open", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var requestBody struct {
+			Source string `json:"source"`
+			Target string `json:"target"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&requestBody)
+		if err != nil {
+			http.Error(w, "Cuerpo de solicitud inválido", http.StatusBadRequest)
+			return
+		}
+		if requestBody.Source == "" || requestBody.Target == "" {
+			http.Error(w, "Los parámetros 'source' y 'target' son requeridos en el cuerpo.", http.StatusBadRequest)
+			return
+		}
+
+		err = service.OpenStreet(r.Context(), requestBody.Source, requestBody.Target)
+		if err != nil {
+			log.Printf("Error al reabrir calle de %s a %s: %v", requestBody.Source, requestBody.Target, err)
+			http.Error(w, fmt.Sprintf("Error al reabrir calle: %v", err), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"message": fmt.Sprintf("Calle de '%s' a '%s' reabierta exitosamente.", requestBody.Source, requestBody.Target)})
+	})
+	router.HandleFunc("/api/street/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		queryParams := r.URL.Query()
+		source := queryParams.Get("source")
+		target := queryParams.Get("target")
+
+		if source == "" || target == "" {
+			http.Error(w, "Los parámetros de consulta 'source' y 'target' son requeridos", http.StatusBadRequest)
+			return
+		}
+
+		status, err := service.GetStreetStatus(r.Context(), source, target)
+		if err != nil {
+			log.Printf("Error al obtener estado de calle de %s a %s: %v", source, target, err)
+			http.Error(w, fmt.Sprintf("Error al obtener estado de calle: %v", err), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"source":     source,
+			"target":     target,
+			"accessible": status,
+		})
+	})
 	// Configurar CORS
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
