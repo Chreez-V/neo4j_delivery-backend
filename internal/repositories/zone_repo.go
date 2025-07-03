@@ -3,8 +3,9 @@ package repositories
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"neo4j_delivery/internal/models"
+	"strconv"
+
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
@@ -36,18 +37,18 @@ func (r *ZoneRepository) GetGraphData() (models.GraphData, error) {
 
 		for result.Next() {
 			record := result.Record()
-			
+
 			// Procesar nodo origen
 			if nodeVal, ok := record.Get("n"); ok && nodeVal != nil {
 				if node, ok := nodeVal.(neo4j.Node); ok {
 					nodeId := strconv.FormatInt(node.Id, 10)
-					
+
 					// Obtener propiedades con comprobación de nil
 					nombre := ""
 					if val, ok := node.Props["nombre"].(string); ok {
 						nombre = val
 					}
-					
+
 					tipoZona := ""
 					if val, ok := node.Props["tipo_zona"].(string); ok {
 						tipoZona = val
@@ -75,21 +76,21 @@ func (r *ZoneRepository) GetGraphData() (models.GraphData, error) {
 					}
 				}
 			}
-			
+
 			// Procesar relación si existe
 			if relVal, ok := record.Get("r"); ok && relVal != nil {
 				if rel, ok := relVal.(neo4j.Relationship); ok {
 					if targetVal, ok := record.Get("m"); ok && targetVal != nil {
 						if targetNode, ok := targetVal.(neo4j.Node); ok {
 							targetId := strconv.FormatInt(targetNode.Id, 10)
-							
+
 							// Obtener propiedades con valores por defecto
-                tiempo := 0.0
-                if val, ok := rel.Props["tiempo_minutos"].(int64); ok {
-                    tiempo = float64(val)
-                } else if val, ok := rel.Props["tiempo_minutos"].(float64); ok {
-                    tiempo = val
-                }
+							tiempo := 0.0
+							if val, ok := rel.Props["tiempo_minutos"].(int64); ok {
+								tiempo = float64(val)
+							} else if val, ok := rel.Props["tiempo_minutos"].(float64); ok {
+								tiempo = val
+							}
 
 							trafico := ""
 							if val, ok := rel.Props["trafico_actual"].(string); ok {
@@ -219,15 +220,14 @@ func (r *ZoneRepository) FindOptimalRoute(ctx context.Context, from, to string) 
 }
 
 func getNodeLabel(node neo4j.Node) string {
-    labels := node.Labels
-    for _, label := range labels {
-        if label == "CentroDistribucion" {
-            return "CentroDistribucion"
-        }
-    }
-    return "Zona"
+	labels := node.Labels
+	for _, label := range labels {
+		if label == "CentroDistribucion" {
+			return "CentroDistribucion"
+		}
+	}
+	return "Zona"
 }
-
 
 func (r *ZoneRepository) GetAllAsGraph() (models.Graph, error) {
 
@@ -278,4 +278,98 @@ func hasNode(m *models.Graph, target string) bool {
 		}
 	}
 	return false
+}
+
+// UpdateConnectionAccessibility actualiza la propiedad 'accesible' de una conexión.
+// Esta función opera en una dirección (source -> target). Si la relación es bidireccional,
+// deberás llamar a esta función para ambas direcciones si quieres cerrar/abrir completamente la "calle".
+func (r *ZoneRepository) UpdateConnectionAccessibility(ctx context.Context, source, target string, accessible bool) error {
+	session := r.Driver.NewSession(neo4j.SessionConfig{})
+	defer session.Close()
+
+	_, err := session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+		query := `
+		MATCH (s:Zona {nombre: $source})-[r:CONECTA]->(t:Zona {nombre: $target})
+		SET r.accesible = $accessible
+		RETURN r
+		`
+		params := map[string]interface{}{
+			"source":     source,
+			"target":     target,
+			"accessible": accessible,
+		}
+		_, err := tx.Run(query, params)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update accessibility for %s -> %s: %w", source, target, err)
+		}
+		return nil, nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("error updating connection accessibility: %w", err)
+	}
+	return nil
+}
+
+// GetConnectionStatus obtiene el estado de accesibilidad de una conexión.
+func (r *ZoneRepository) GetConnectionStatus(ctx context.Context, source, target string) (bool, error) {
+	session := r.Driver.NewSession(neo4j.SessionConfig{})
+	defer session.Close()
+
+	result, err := session.ReadTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+		query := `
+		MATCH (s:Zona {nombre: $source})-[r:CONECTA]->(t:Zona {nombre: $target})
+		RETURN r.accesible AS accesible
+		`
+		params := map[string]interface{}{
+			"source": source,
+			"target": target,
+		}
+		res, err := tx.Run(query, params)
+		if err != nil {
+			return false, err
+		}
+		if res.Next() {
+			val, ok := res.Record().Get("accesible")
+			if !ok {
+				return false, fmt.Errorf("property 'accesible' not found for connection %s -> %s", source, target)
+			}
+			return val.(bool), nil
+		}
+		return false, fmt.Errorf("connection not found between %s and %s", source, target)
+	})
+
+	if err != nil {
+		return false, fmt.Errorf("error getting connection status: %w", err)
+	}
+	return result.(bool), nil
+}
+
+// UpdateConnectionTime actualiza la propiedad 'tiempo_minutos' de una conexión.
+func (r *ZoneRepository) UpdateConnectionTime(ctx context.Context, source, target string, newTime float64) error {
+	session := r.Driver.NewSession(neo4j.SessionConfig{})
+	defer session.Close()
+
+	_, err := session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+		query := `
+		MATCH (s:Zona {nombre: $source})-[r:CONECTA]->(t:Zona {nombre: $target})
+		SET r.tiempo_minutos = $newTime
+		RETURN r
+		`
+		params := map[string]interface{}{
+			"source":  source,
+			"target":  target,
+			"newTime": newTime,
+		}
+		_, err := tx.Run(query, params)
+		if err != nil {
+			return nil, fmt.Errorf("falló la actualización de tiempo para %s -> %s: %w", source, target, err)
+		}
+		return nil, nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("error al actualizar el tiempo de conexión: %w", err)
+	}
+	return nil
 }
