@@ -124,9 +124,9 @@ func main() {
 		}
 
 		var requestBody struct {
-			Source  string  `json:"source"`
-			Target  string  `json:"target"`
-			NewTime float64 `json:"new_time"`
+			Source  string `json:"source"`
+			Target  string `json:"target"`
+			NewTime int64  `json:"new_time"`
 		}
 
 		err := json.NewDecoder(r.Body).Decode(&requestBody)
@@ -145,7 +145,7 @@ func main() {
 			http.Error(w, fmt.Sprintf("Error al actualizar tiempo de calle: %v", err), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"message": fmt.Sprintf("Tiempo de tránsito de '%s' a '%s' actualizado a %.2f minutos.", requestBody.Source, requestBody.Target, requestBody.NewTime)})
+		json.NewEncoder(w).Encode(map[string]string{"message": fmt.Sprintf("Tiempo de tránsito de '%s' a '%s' actualizado a %d minutos.", requestBody.Source, requestBody.Target, requestBody.NewTime)})
 	})
 	// --- Nuevos Endpoints para Cierre/Reapertura de Calles ---
 	router.HandleFunc("/api/street/close", func(w http.ResponseWriter, r *http.Request) {

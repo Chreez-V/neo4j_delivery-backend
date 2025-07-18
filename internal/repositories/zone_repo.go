@@ -346,7 +346,7 @@ func (r *ZoneRepository) GetConnectionStatus(ctx context.Context, source, target
 }
 
 // UpdateConnectionTime actualiza la propiedad 'tiempo_minutos' de una conexión.
-func (r *ZoneRepository) UpdateConnectionTime(ctx context.Context, source, target string, newTime float64) error {
+func (r *ZoneRepository) UpdateConnectionTime(ctx context.Context, source, target string, newTime int64) error {
 	session := r.Driver.NewSession(neo4j.SessionConfig{})
 	defer session.Close()
 

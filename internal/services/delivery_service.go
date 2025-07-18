@@ -91,7 +91,8 @@ func (s *DeliveryService) OpenStreet(ctx context.Context, source, target string)
 func (s *DeliveryService) GetStreetStatus(ctx context.Context, source, target string) (bool, error) {
 	return s.ZoneRepo.GetConnectionStatus(ctx, source, target)
 }
+
 // UpdateStreetTime actualiza el tiempo de tránsito de una calle (conexión).
-func (s *DeliveryService) UpdateStreetTime(ctx context.Context, source, target string, newTime float64) error {
+func (s *DeliveryService) UpdateStreetTime(ctx context.Context, source, target string, newTime int64) error {
 	return s.ZoneRepo.UpdateConnectionTime(ctx, source, target, newTime)
 }
