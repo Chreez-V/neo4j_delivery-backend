@@ -78,9 +78,14 @@ func Dijkstra(graph models.Graph, start string) map[string]models.Edge {
 			break
 		}
 
-		unvisitedNodes[currentNode] = false
+		delete(unvisitedNodes, currentNode)
 
 		for _, neighbor := range graph[currentNode] {
+			if !neighbor.Accesible {
+				fmt.Printf("Skipping inaccessible edge from %s to %s (Cost: %.2f)\n", currentNode, neighbor.Item, neighbor.Cost)
+				continue
+			}
+
 			newCost := table[currentNode].Cost + neighbor.Cost
 
 			if newCost < table[neighbor.Item].Cost {

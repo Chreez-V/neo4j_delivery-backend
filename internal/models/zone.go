@@ -19,4 +19,5 @@ type Connection struct {
 	Trafico   string `json:"trafico_actual"`
 	Capacidad int    `json:"capacidad"`
 	Direccion string `json:"direccion"` // 'uni' o 'bi'
+	Activa      bool   `json:"activa"`    //  campo para el estado de la conexión
 }

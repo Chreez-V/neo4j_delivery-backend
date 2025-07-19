@@ -41,7 +41,7 @@ func (r *RouteRepository) GetHighTrafficEdges() []models.Connection {
 			data := record.AsMap()
 			time := int(data["tiempo"].(int64))
 			capacity := int(data["capacidad"].(int64))
-			edge := models.Connection{data["source"].(string), data["target"].(string), time, data["traffic"].(string), capacity, "?"}
+			edge := models.Connection{data["source"].(string), data["target"].(string), time, data["traffic"].(string), capacity, "?",true}
 			edges = append(edges, edge)
 
 		}

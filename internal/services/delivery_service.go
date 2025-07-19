@@ -76,3 +76,23 @@ func (s *DeliveryService) GetHighTrafficRoutes() []models.Connection {
 	log.Println(routes)
 	return routes
 }
+
+// CloseStreet simula el cierre de una calle (conexión) entre dos zonas.
+func (s *DeliveryService) CloseStreet(ctx context.Context, source, target string) error {
+	return s.ZoneRepo.UpdateConnectionAccessibility(ctx, source, target, false)
+}
+
+// OpenStreet reabre una calle (conexión) entre dos zonas.
+func (s *DeliveryService) OpenStreet(ctx context.Context, source, target string) error {
+	return s.ZoneRepo.UpdateConnectionAccessibility(ctx, source, target, true)
+}
+
+// GetStreetStatus obtiene el estado de accesibilidad de una calle.
+func (s *DeliveryService) GetStreetStatus(ctx context.Context, source, target string) (bool, error) {
+	return s.ZoneRepo.GetConnectionStatus(ctx, source, target)
+}
+
+// UpdateStreetTime actualiza el tiempo de tránsito de una calle (conexión).
+func (s *DeliveryService) UpdateStreetTime(ctx context.Context, source, target string, newTime int64) error {
+	return s.ZoneRepo.UpdateConnectionTime(ctx, source, target, newTime)
+}
